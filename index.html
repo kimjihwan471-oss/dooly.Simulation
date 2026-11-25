@@ -1,0 +1,542 @@
+<title>다이슨 날개 소음 시뮬레이터</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Noto+Sans+KR:wght@400;500;700&display=swap">
+<style>
+/* Layout: 좌측 고정 파라미터 패널 + 우측 결과(요약 → 덤벨 → 타임라인 → 스펙트럼 → 표) */
+:root{
+  --bg:#f5f6f8; --panel:#ffffff; --fg:#14181f; --muted:#5d6572; --line:#dde1e7; --line2:#eceff3;
+  --surface:#ffffff; --s1:#257de0; --s2:#f47230; --s2text:#c24a10; --grid:#e6e9ee;
+  --font:'Noto Sans KR',system-ui,-apple-system,'Segoe UI',sans-serif; --mono:'JetBrains Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#050506; --panel:#141416; --fg:#f1f2f4; --muted:#9aa2ae; --line:#2b2f37; --line2:#22262d;
+  --surface:#141416; --s1:#338ced; --s2:#e76624; --s2text:#f08a4f; --grid:#2a2d34; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#050506; --panel:#141416; --fg:#f1f2f4; --muted:#9aa2ae; --line:#2b2f37; --line2:#22262d;
+  --surface:#141416; --s1:#338ced; --s2:#e76624; --s2text:#f08a4f; --grid:#2a2d34; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--font);font-size:14px;line-height:1.6;
+  padding-block:0;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.wrap{max-width:1280px;margin:0 auto}
+header{padding-block:24px 18px;display:flex;flex-direction:column;gap:8px}
+.top{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:999px;padding:3px;background:var(--panel)}
+.seg button{border:0;background:transparent;color:var(--muted);padding:4px 14px;border-radius:999px;font-size:13px}
+.seg button[aria-pressed="true"]{background:var(--fg);color:var(--bg)}
+.ctlgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:2px 24px}
+details.adv{border-top:1px solid var(--line2);margin-top:10px;padding-top:10px}
+details.adv>summary{font-size:13px;color:var(--muted)}
+.biglabel{font-size:clamp(24px,5vw,36px);font-weight:700;line-height:1.25;letter-spacing:-.01em;text-wrap:balance}
+h1{font-size:clamp(22px,3.4vw,30px);line-height:1.25;margin:0;font-weight:700;letter-spacing:-.01em;text-wrap:balance}
+header p{margin:0;color:var(--muted);max-width:72ch}
+.main{padding-bottom:40px}
+.ctl{display:grid;grid-template-columns:1fr auto;gap:2px 8px;margin-bottom:10px}
+.ctl label{font-size:13px}
+.ctl output{font-family:var(--mono);font-size:12px;color:var(--muted);text-align:right}
+.ctl input[type=range]{grid-column:1/-1;width:100%;margin:0;accent-color:var(--fg)}
+.tag{font-size:11px;color:var(--muted);margin:-4px 0 10px}
+button{font:inherit;cursor:pointer}
+.btn{background:transparent;color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:6px 12px;font-size:13px}
+.btn:hover{background:var(--line2)}
+:focus-visible{outline:2px solid var(--s1);outline-offset:2px}
+section.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px;margin-bottom:16px;min-width:0}
+section.card h3{margin:0 0 2px;font-size:16px;font-weight:700}
+section.card .sub{margin:0 0 12px;color:var(--muted);font-size:13px}
+.headline{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 18px}
+.big{font-size:clamp(26px,5vw,38px);font-weight:700;line-height:1.25;letter-spacing:-.01em;text-wrap:balance}
+.big em{font-style:normal;color:var(--s2text)}
+.headline{flex-direction:column;align-items:flex-start}
+.headline .txt{color:var(--muted);max-width:62ch;font-size:15px}
+.legend{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13px;margin:0 0 8px}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.sw{width:10px;height:10px;border-radius:50%;display:inline-block}
+.chart{position:relative;width:100%}
+.chart svg{display:block;width:100%;height:auto;overflow:visible}
+.chart text{font-family:var(--font);fill:var(--muted);font-size:11px}
+.chart .mono{font-family:var(--mono)}
+.chart .lbl{fill:var(--fg)}
+.tip{position:absolute;pointer-events:none;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:6px 9px;font-size:12px;box-shadow:0 4px 14px rgba(0,0,0,.14);white-space:nowrap;z-index:5;font-family:var(--mono)}
+.tip b{font-family:var(--font)}
+.tabs{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 10px}
+.tabs button{border:1px solid var(--line);background:transparent;color:var(--fg);border-radius:999px;padding:3px 12px;font-size:13px}
+.tabs button[aria-pressed="true"]{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+.tbl{overflow-x:auto}
+table{border-collapse:collapse;width:100%;min-width:560px;font-size:13px}
+th,td{padding:7px 10px;border-bottom:1px solid var(--line2);text-align:right;white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+th{color:var(--muted);font-weight:500;font-size:12px}
+td.n{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.neg{color:var(--s1)}
+details{margin-top:4px}
+summary{cursor:pointer;font-weight:500}
+.notes{color:var(--muted);font-size:13px}
+.notes li{margin-bottom:6px}
+.notes b{color:var(--fg)}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:12px}
+.ok{font-size:12px;color:var(--muted)}
+</style>
+
+<div class="wrap">
+<header>
+  <div class="top">
+    <h1>다이슨 날개 소음 시뮬레이터</h1>
+    <div class="seg" role="group" aria-label="화면 모드"><button type="button" id="mLight" aria-pressed="true">화이트</button><button type="button" id="mDark" aria-pressed="false">블랙</button></div>
+  </div>
+  <p>같은 모터·같은 재질의 드론 두 대를 공중에 매달아 놓고, 일반 날개와 다이슨 기술을 적용한 날개의 소음을 비교하는 시뮬레이션이에요. 실제 측정값이 아니라 계산 결과입니다.</p>
+</header>
+
+<div class="main">
+  <section class="card" aria-live="polite">
+    <div class="headline"><div class="big" id="bigDelta">–</div><div class="txt" id="bigTxt"></div></div>
+  </section>
+
+  <section class="card">
+    <h3>움직임별 소음</h3>
+    <p class="sub">숫자가 작을수록 조용해요. dB(A)는 사람 귀에 맞춘 소음 단위입니다.</p>
+    <div class="legend"><span><i class="sw" style="background:var(--s1)"></i>일반 날개</span><span><i class="sw" style="background:var(--s2)"></i>다이슨 날개</span></div>
+    <div class="chart" id="chDumb"></div>
+  </section>
+
+  <section class="card">
+    <h3>이륙부터 이동까지</h3>
+    <p class="sub">이륙 → 호버링 → 전진 → 후진 → 좌 → 우 순서로 움직이는 동안 소음이 어떻게 변하는지 보여줘요. 그래프에 마우스를 올려 보세요.</p>
+    <div class="legend"><span><i class="sw" style="background:var(--s1)"></i>일반 날개</span><span><i class="sw" style="background:var(--s2)"></i>다이슨 날개</span></div>
+    <div class="chart" id="chTime"></div>
+  </section>
+
+  <section class="card">
+    <details id="cond">
+      <summary><b>조건 바꿔보기</b> <span class="ok">기울기, 무게 등을 바꾸면 결과가 바로 달라져요</span></summary>
+      <div id="controls" style="margin-top:12px"></div>
+      <div class="row"><button class="btn" id="reset" type="button">기본값으로</button><button class="btn" id="copy" type="button">결과 표 복사</button><span class="ok" id="copyok" role="status"></span></div>
+    </details>
+  </section>
+
+  <section class="card">
+    <details id="pro">
+      <summary><b>자세히 보기</b> <span class="ok">주파수 그래프, 결과 표, 계산 방법 (전문가용)</span></summary>
+      <div style="margin-top:14px">
+        <h3>주파수별 소음</h3>
+        <p class="sub">어떤 높이의 소리가 줄어드는지 보여줘요. 뾰족하게 솟은 부분이 프로펠러가 도는 소리(BPF)입니다.</p>
+        <div class="tabs" id="tabs" role="group" aria-label="움직임 선택"></div>
+        <div class="legend"><span><i class="sw" style="background:var(--s1)"></i>일반 날개</span><span><i class="sw" style="background:var(--s2)"></i>다이슨 날개</span></div>
+        <div class="chart" id="chSpec"></div>
+        <h3 style="margin-top:22px">결과 표</h3>
+        <p class="sub">로터(프로펠러) 4개의 rpm은 최소–최대 값입니다.</p>
+        <div class="tbl"><table id="tbl"></table></div>
+        <h3 style="margin-top:22px">계산 방법과 한계</h3>
+        <ul class="notes">
+          <li><b>추력 배분</b>: 기체를 기울이면 앞뒤(또는 좌우) 프로펠러의 회전수가 달라지고, 이 차이가 방향별 소음 차이의 주된 원인입니다.</li>
+          <li><b>소음 계산</b>: 프로펠러 하중 소음(Gutin 식), 날개 뒤쪽 가장자리 소음(팁속도 5제곱 비례), 모터 소음을 합칩니다. 절대 레벨은 소형 드론 실측 범위에 맞춘 보정값이라 본인 기체로 다시 맞춰야 합니다.</li>
+          <li><b>다이슨 효과</b>: 덕트 증폭, 후연 톱니, 팁와류 저감, 불균등 블레이드 간격, 헬름홀츠 공명기, 측면 차폐를 dB 가정값으로 넣었습니다. 실제 측정값이 아닙니다.</li>
+          <li><b>제외</b>: 실내 반사, 기체 진동, 프로펠러 간 간섭은 계산하지 않고 무반향 환경을 가정합니다.</li>
+          <li><b>실측 시</b>: 마이크를 같은 거리·방향에 고정하고 움직임마다 3회 이상 측정하세요. 1~2 dB 이내 차이는 구분하기 어렵습니다.</li>
+        </ul>
+      </div>
+    </details>
+  </section>
+</div>
+</div>
+
+<script>
+/* ===== 물리 모델: 쿼드콥터 로터 소음 (Gutin 하중 소음 + 광대역 + 모터) ===== */
+const Sim = (() => {
+  const RHO = 1.225, C0 = 343, G = 9.80665, P0 = 2e-5;
+  const BANDS = [50,63,80,100,125,160,200,250,315,400,500,630,800,1000,1250,1600,2000,2500,3150,4000,5000,6300,8000,10000,12500];
+  const aw = f => {
+    const f2 = f*f, c = 12194*12194;
+    const ra = c*f2*f2 / ((f2+20.6*20.6)*Math.sqrt((f2+107.7*107.7)*(f2+737.9*737.9))*(f2+c));
+    return 20*Math.log10(ra) + 2.0;
+  };
+  const AW = BANDS.map(aw);
+  const edges = BANDS.map(f => [f/Math.pow(2,1/6), f*Math.pow(2,1/6)]);
+  const bandOf = f => { for (let i=0;i<BANDS.length;i++) if (f>=edges[i][0] && f<edges[i][1]) return i; return -1; };
+  const db = x => 10*Math.log10(Math.max(x,1e-30));
+
+  const DEFAULTS = {
+    mass: 1.2,        // kg, 기본 기체 질량 (배터리 포함)
+    dia: 0.178,       // m, 프로펠러 지름 (7인치)
+    blades: 3,
+    ct: 0.10,         // 추력계수 (T = CT ρ n² D⁴)
+    fm: 0.60,         // Figure of Merit
+    arm: 0.26,        // m, 대각 모터 중심 간 거리 (모터 중심 반경 = arm/2)
+    hcg: 0.04,        // m, 무게중심-로터면 높이차
+    tilt: 15,         // deg, 이동 시 기체 기울기
+    speed: 5,         // m/s, 이동 속도(유입 보정용)
+    micR: 1.0,        // m
+    micAz: 0,         // deg (0=정면, 90=좌측)
+    micEl: -15,       // deg (음수=기체 아래쪽)
+    motorLvl: 54,     // dB(Z) @1m, 로터 1개, 기준 n=150 rps (두 기체 동일 모터)
+    ambient: 30,      // dB(A) 암소음
+    // 다이슨 기술 적용 파라미터 (가정값 – 실험으로 대체할 것)
+    dyMassFrac: 0.06, // 덕트/링 추가 질량 비율
+    dyAug: 0.08,      // 같은 rpm 대비 추력 증가율 (덕트 증폭)
+    dySerr: 3.0,      // dB, 후연 톱니(serration) 광대역 저감 (>0.8 kHz)
+    dyTip: 2.0,       // dB, 덕트 팁와류 저감 (>1.6 kHz)
+    dyUneven: 4.0,    // dB, 불균등 블레이드 간격 (톤 성분)
+    dyHelm: 3.0,      // dB, 헬름홀츠 공명기 (BPF 1차)
+    dyShield: 3.0     // dB, 덕트 측면 차폐 (면내 방향)
+  };
+
+  function besselJ(n, x) {
+    let term = Math.pow(x/2, n), f = 1;
+    for (let i=1;i<=n;i++) { f *= i; }
+    term /= f;
+    let s = term;
+    for (let k=1;k<40;k++) { term *= -(x*x/4)/(k*(k+n)); s += term; if (Math.abs(term) < 1e-18) break; }
+    return s;
+  }
+
+  function layout(cfg, tiltDeg, dirDeg) {
+    const th = tiltDeg*Math.PI/180, ph = dirDeg*Math.PI/180;
+    const dx = Math.cos(ph), dy = Math.sin(ph);
+    const rad = cfg.arm/2;               // 모터 중심까지 반경
+    const b = rad/Math.SQRT2;
+    const body = [[b,b],[b,-b],[-b,-b],[-b,b]];
+    const n = [Math.sin(th)*dx, Math.sin(th)*dy, Math.cos(th)];
+    const k = [-dy, dx, 0];
+    const rot = v => {
+      const kv = k[0]*v[0]+k[1]*v[1]+k[2]*v[2];
+      const kx = [k[1]*v[2]-k[2]*v[1], k[2]*v[0]-k[0]*v[2], k[0]*v[1]-k[1]*v[0]];
+      const c = Math.cos(th), s = Math.sin(th);
+      return [v[0]*c + kx[0]*s + k[0]*kv*(1-c), v[1]*c + kx[1]*s + k[1]*kv*(1-c), v[2]*c + kx[2]*s + k[2]*kv*(1-c)];
+    };
+    return { th, dx, dy, n, body, pos: body.map(p => rot([p[0],p[1],0])) };
+  }
+
+  /* variant: 'conv' | 'dyson'. state: {tilt(deg), dir(deg), frac(0..1)} */
+  function evaluate(cfg, variant, state) {
+    const dy = variant === 'dyson';
+    const frac = state.frac === undefined ? 1 : state.frac;
+    const m = cfg.mass * (dy ? 1 + cfg.dyMassFrac : 1);
+    const L = layout(cfg, state.tilt || 0, state.dir || 0);
+    const th = L.th, cth = Math.cos(th);
+    const A = Math.PI*cfg.dia*cfg.dia/4;
+    const aug = dy ? cfg.dyAug : 0;
+    const fmE = cfg.fm*(1+aug);
+    const kT = cfg.ct*RHO*Math.pow(cfg.dia,4)*(1+aug);
+    const Tt = m*G/cth*frac;
+    const Mtrim = m*G*Math.tan(th)*cfg.hcg*frac;
+    const sumP2 = L.body.reduce((s,p)=>s+Math.pow(p[0]*L.dx+p[1]*L.dy,2),0) || 1;
+    const lam = Mtrim/sumP2;
+    // 관측점
+    const az = cfg.micAz*Math.PI/180, el = cfg.micEl*Math.PI/180;
+    const mic = [cfg.micR*Math.cos(el)*Math.cos(az), cfg.micR*Math.cos(el)*Math.sin(az), cfg.micR*Math.sin(el)];
+    const nb = BANDS.length;
+    const pw = new Array(nb).fill(0);
+    const rotors = [];
+    const R = cfg.dia/2, Re = 0.8*R, Bn = cfg.blades;
+    for (let i=0;i<4;i++) {
+      const bp = L.body[i];
+      let T = Tt/4 - lam*(bp[0]*L.dx + bp[1]*L.dy);
+      T = Math.max(T, 0);
+      const n = Math.sqrt(T/kT);                  // rps
+      const Om = 2*Math.PI*n, Vt = Om*R, Mt = Vt/C0;
+      const P = T>0 ? Math.pow(T,1.5)/(Math.sqrt(2*RHO*A)*fmE) : 0;
+      const Q = Om>0 ? P/Om : 0;
+      const r = L.pos[i];
+      const v = [mic[0]-r[0], mic[1]-r[1], mic[2]-r[2]];
+      const S = Math.hypot(v[0],v[1],v[2]);
+      const cosT = (v[0]*L.n[0]+v[1]*L.n[1]+v[2]*L.n[2])/S;
+      const sinT = Math.sqrt(Math.max(0,1-cosT*cosT));
+      rotors.push({ T, rpm: n*60, Vt, Mt, P, S, theta: Math.acos(cosT)*180/Math.PI });
+      if (n < 5) continue;
+      // --- 톤 (Gutin) ---
+      for (let k=1;k<=8;k++) {
+        const f = k*Bn*n, bi = bandOf(f);
+        if (bi < 0) continue;
+        const x = k*Bn*Om*Re*sinT/C0;
+        const amp = (k*Bn*Om/(2*Math.SQRT2*Math.PI*C0*S)) * Math.abs(T*cosT - Q*C0/(Om*Re*Re)) * besselJ(k*Bn, x);
+        let p2 = amp*amp;
+        if (dy) { p2 *= Math.pow(10, -cfg.dyUneven/10); if (k===1) p2 *= Math.pow(10, -cfg.dyHelm/10); }
+        pw[bi] += p2/(P0*P0);
+      }
+      // --- 광대역 (후연 소음, ∝ V^5) ---
+      const mu = cfg.speed*cth/Math.max(Vt,1);
+      const adv = 1 + 5*mu*mu + 0.625*Math.pow(mu,4);
+      let Lbb = cfg.bbRef + 50*Math.log10(Vt/87) + db(adv) + 10*Math.log10(Bn/3) + 20*Math.log10(cfg.dia/0.178);
+      Lbb += 10*Math.log10((0.4+0.6*cosT*cosT)/0.6) - 20*Math.log10(S);
+      if (dy) Lbb -= cfg.dyShield*sinT*sinT;
+      const fp = 2000*Vt/87, sg = 0.5;
+      const w = BANDS.map(f => Math.exp(-0.5*Math.pow(Math.log10(f/fp)/sg,2)));
+      const ws = w.reduce((a,b)=>a+b,0);
+      // --- 모터/ESC (두 기체 동일) ---
+      const Lm = cfg.motorLvl + 30*Math.log10(n/150) - 20*Math.log10(S);
+      const wm = BANDS.map(f => Math.exp(-0.5*Math.pow(Math.log10(f/3000)/0.3,2)));
+      const wms = wm.reduce((a,b)=>a+b,0);
+      for (let b=0;b<nb;b++) {
+        let red = 0;
+        if (dy) {
+          const f = BANDS[b];
+          if (f >= 800) red += cfg.dySerr;
+          if (f >= 1600) red += cfg.dyTip;
+        }
+        pw[b] += Math.pow(10, (Lbb + db(w[b]/ws) - red)/10);
+        pw[b] += Math.pow(10, (Lm + db(wm[b]/wms))/10);
+      }
+    }
+    const lz = pw.map(db);
+    let a = 0, z = 0;
+    for (let b=0;b<nb;b++) { a += Math.pow(10,(lz[b]+AW[b])/10); z += pw[b]; }
+    a += Math.pow(10, cfg.ambient/10);
+    return {
+      dbA: db(a), dbZ: db(z+Math.pow(10,cfg.ambient/10)), spectrum: lz,
+      rotors, totalP: rotors.reduce((s,r)=>s+r.P,0), totalT: Tt, mass: m
+    };
+  }
+
+  const MOVES = [
+    { id:'hover', label:'호버링', dir:0,   tilt:0 },
+    { id:'front', label:'전진',   dir:0,   tilt:1 },
+    { id:'back',  label:'후진',   dir:180, tilt:1 },
+    { id:'left',  label:'좌 이동', dir:90,  tilt:1 },
+    { id:'right', label:'우 이동', dir:-90, tilt:1 }
+  ];
+
+  function scenarios(cfg) {
+    return MOVES.map(mv => {
+      const st = { tilt: mv.tilt ? cfg.tilt : 0, dir: mv.dir, frac: 1 };
+      return { move: mv, conv: evaluate(cfg,'conv',st), dyson: evaluate(cfg,'dyson',st) };
+    });
+  }
+
+  const ss = x => x*x*(3-2*x);
+  function timeline(cfg, dt) {
+    const seq = [['front',0],['back',180],['left',90],['right',-90]];
+    const total = 4 + seq.length*5 + 1;
+    const out = [], marks = [];
+    for (let t=0; t<=total+1e-9; t+=dt) {
+      let frac = ss(Math.min(1, t/2)), tilt = 0, dir = 0;
+      if (t >= 4) {
+        const idx = Math.min(seq.length-1, Math.floor((t-4)/5)), lt = (t-4)-idx*5;
+        dir = seq[idx][1];
+        if (lt < 0.8) tilt = cfg.tilt*ss(lt/0.8);
+        else if (lt < 3.2) tilt = cfg.tilt;
+        else if (lt < 4.0) tilt = cfg.tilt*(1-ss((lt-3.2)/0.8));
+        if (t > 4+seq.length*5) { tilt = 0; }
+      }
+      const st = { tilt, dir, frac };
+      out.push({ t, tilt, dir, frac, conv: evaluate(cfg,'conv',st).dbA, dyson: evaluate(cfg,'dyson',st).dbA });
+    }
+    seq.forEach((s,i)=>marks.push({ t0: 4+i*5, t1: 4+i*5+5, dir: s[1] }));
+    return { points: out, total };
+  }
+
+  DEFAULTS.bbRef = 66; // 광대역 기준값 dB(Z) @1m, 로터 1개, Vtip 87 m/s, 3엽 7인치 (보정 필요)
+  return { DEFAULTS, evaluate, scenarios, timeline, BANDS, AW, MOVES, db };
+})();
+if (typeof module !== 'undefined') module.exports = Sim;
+
+</script>
+<script>
+(function(){
+const D = Sim.DEFAULTS, MOVES = Sim.MOVES, BANDS = Sim.BANDS;
+const SPEC = [
+  ['기체 기본', [
+    ['mass','기체 질량 (배터리 포함)',500,4000,50,'g',1/1000],
+    ['dia','프로펠러 지름',80,300,5,'mm',1/1000],
+    ['blades','블레이드 수',2,6,1,'엽',1],
+    ['tilt','이동 시 기울기',5,35,1,'°',1],
+    ['speed','이동 속도',0,15,0.5,'m/s',1]]],
+  ['마이크 위치 (고급)', [
+    ['micR','기체 중심에서 거리',0.5,3,0.1,'m',1],
+    ['micAz','방위 (0°=정면, 90°=좌측)',0,345,15,'°',1],
+    ['micEl','고도 (음수=아래)',-90,90,5,'°',1],
+    ['ambient','암소음',20,50,1,'dB(A)',1],
+    ['motorLvl','모터·ESC 소음 (양쪽 동일)',40,65,1,'dB',1]]],
+  ['다이슨 기술 효과 가정 (고급)', [
+    ['dyMassFrac','덕트 추가 질량',0,20,1,'%',0.01],
+    ['dyAug','덕트 추력 증폭 (같은 rpm)',0,20,1,'%',0.01],
+    ['dySerr','후연 톱니 광대역 저감',0,8,0.5,'dB',1],
+    ['dyTip','팁와류 저감 (1.6 kHz↑)',0,6,0.5,'dB',1],
+    ['dyUneven','불균등 간격 톤 저감',0,8,0.5,'dB',1],
+    ['dyHelm','헬름홀츠 공명기 (BPF 1차)',0,8,0.5,'dB',1],
+    ['dyShield','덕트 측면 차폐',0,6,0.5,'dB',1]]]
+];
+const cfg = Object.assign({}, D);
+const ctl = document.getElementById('controls');
+const inputs = {};
+function fmt(v,step){ return step<1 ? v.toFixed(1) : String(Math.round(v)); }
+SPEC.forEach(([title,items],gi)=>{
+  let host = document.createElement('div'); host.className='ctlgrid';
+  if(gi===0){ ctl.appendChild(host); }
+  else { const d=document.createElement('details'); d.className='adv'; const sm=document.createElement('summary'); sm.textContent=title; d.appendChild(sm); const wrapDiv=document.createElement('div'); wrapDiv.style.marginTop='10px'; wrapDiv.appendChild(host); d.appendChild(wrapDiv); ctl.appendChild(d); }
+  items.forEach(([k,label,min,max,step,unit,scale])=>{
+    const w = document.createElement('div'); w.className='ctl';
+    const id = 'c_'+k;
+    w.innerHTML = '<label for="'+id+'">'+label+'</label><output for="'+id+'" id="o_'+k+'"></output><input type="range" id="'+id+'" min="'+min+'" max="'+max+'" step="'+step+'">';
+    host.appendChild(w);
+    const inp = w.querySelector('input'), out = w.querySelector('output');
+    const sync = ()=>{ out.textContent = fmt(+inp.value,step)+' '+unit; };
+    inp.value = D[k]/scale; sync();
+    inp.addEventListener('input',()=>{ cfg[k] = +inp.value*scale; sync(); schedule(); });
+    inputs[k] = {inp,sync,scale};
+  });
+});
+document.getElementById('reset').onclick = ()=>{
+  Object.keys(inputs).forEach(k=>{ cfg[k]=D[k]; inputs[k].inp.value = D[k]/inputs[k].scale; inputs[k].sync(); });
+  schedule();
+};
+
+let selMove = 'hover';
+const tabs = document.getElementById('tabs');
+MOVES.forEach(m=>{
+  const b = document.createElement('button'); b.type='button'; b.textContent=m.label; b.dataset.id=m.id;
+  b.setAttribute('aria-pressed', m.id===selMove);
+  b.onclick = ()=>{ selMove=m.id; [...tabs.children].forEach(c=>c.setAttribute('aria-pressed', c.dataset.id===selMove)); draw(); };
+  tabs.appendChild(b);
+});
+
+let raf=0;
+function schedule(){ if(!raf) raf=requestAnimationFrame(()=>{ raf=0; draw(); }); }
+
+const NS='http://www.w3.org/2000/svg';
+const f1 = x=>x.toFixed(1);
+const sgn = x=> (x>0?'+':x<0?'−':'')+Math.abs(x).toFixed(1);
+function niceTicks(lo,hi,n){
+  const raw=(hi-lo)/n, p=Math.pow(10,Math.floor(Math.log10(raw))), r=raw/p;
+  const step=(r<1.5?1:r<3?2:r<7?5:10)*p, out=[];
+  for(let v=Math.ceil(lo/step)*step; v<=hi+1e-9; v+=step) out.push(+v.toFixed(6));
+  return out;
+}
+function wrapW(el){ return Math.max(280, el.clientWidth); }
+function mkTip(el){ let t=el.querySelector('.tip'); if(!t){ t=document.createElement('div'); t.className='tip'; t.hidden=true; el.appendChild(t);} return t; }
+
+/* ---------- 덤벨 차트 ---------- */
+function drawDumb(el, sc){
+  const W=wrapW(el), rowH=44, mt=8, mb=34, ml=W<480?58:78, mr=W<480?56:84, H=mt+rowH*sc.length+mb;
+  const vals=sc.flatMap(s=>[s.conv.dbA,s.dyson.dbA]);
+  const lo=Math.floor(Math.min(...vals)-3), hi=Math.ceil(Math.max(...vals)+3);
+  const x=v=>ml+(v-lo)/(hi-lo)*(W-ml-mr);
+  let s='<svg viewBox="0 0 '+W+' '+H+'" role="img" aria-label="움직임별 일반 날개와 다이슨 날개의 dB(A) 비교">';
+  niceTicks(lo,hi,6).forEach(v=>{
+    s+='<line x1="'+x(v)+'" x2="'+x(v)+'" y1="'+mt+'" y2="'+(H-mb)+'" stroke="var(--grid)"/>';
+    s+='<text class="mono" x="'+x(v)+'" y="'+(H-mb+16)+'" text-anchor="middle">'+v+'</text>';
+  });
+  s+='<text x="'+((ml+W-mr)/2)+'" y="'+(H-4)+'" text-anchor="middle">dB(A)</text>';
+  sc.forEach((r,i)=>{
+    const y=mt+rowH*i+rowH/2, a=r.conv.dbA, b=r.dyson.dbA, d=b-a;
+    s+='<text class="lbl" x="0" y="'+(y+4)+'" style="font-size:13px">'+r.move.label+'</text>';
+    s+='<line x1="'+x(a)+'" x2="'+x(b)+'" y1="'+y+'" y2="'+y+'" stroke="var(--muted)" stroke-width="2" opacity=".55"/>';
+    const lowLeft = b<a;
+    s+='<text class="mono lbl" x="'+(x(a)+(lowLeft?10:-10))+'" y="'+(y-9)+'" text-anchor="'+(lowLeft?'start':'end')+'">'+f1(a)+'</text>';
+    s+='<text class="mono lbl" x="'+(x(b)+(lowLeft?-10:10))+'" y="'+(y-9)+'" text-anchor="'+(lowLeft?'end':'start')+'">'+f1(b)+'</text>';
+    s+='<circle cx="'+x(a)+'" cy="'+y+'" r="6" fill="var(--s1)" stroke="var(--surface)" stroke-width="2"><title>기존 '+f1(a)+' dB(A)</title></circle>';
+    s+='<circle cx="'+x(b)+'" cy="'+y+'" r="6" fill="var(--s2)" stroke="var(--surface)" stroke-width="2"><title>다이슨 '+f1(b)+' dB(A)</title></circle>';
+    s+='<text class="mono lbl" x="'+(W-mr+12)+'" y="'+(y+4)+'" style="font-size:13px">Δ '+sgn(d)+'</text>';
+  });
+  el.innerHTML=s+'</svg>';
+}
+
+/* ---------- 선 차트 (십자선 툴팁) ---------- */
+function drawLine(el, o){
+  const W=wrapW(el), H=o.h||250, m={l:40,r:12,t:o.topPad||12,b:44}, iw=W-m.l-m.r, ih=H-m.t-m.b;
+  const n=o.xs.length, xi=i=>m.l+(o.xcat? (i+0.5)/n*iw : (o.xs[i]-o.xs[0])/(o.xs[n-1]-o.xs[0])*iw);
+  const y=v=>m.t+(1-(v-o.ymin)/(o.ymax-o.ymin))*ih;
+  let s='<svg viewBox="0 0 '+W+' '+H+'" role="img" aria-label="'+o.aria+'">';
+  niceTicks(o.ymin,o.ymax,5).forEach(v=>{
+    s+='<line x1="'+m.l+'" x2="'+(W-m.r)+'" y1="'+y(v)+'" y2="'+y(v)+'" stroke="var(--grid)"/>';
+    s+='<text class="mono" x="'+(m.l-6)+'" y="'+(y(v)+4)+'" text-anchor="end">'+v+'</text>';
+  });
+  if(o.bands) o.bands.forEach((b,i)=>{
+    const x0=xi(b.i0), x1=xi(b.i1);
+    if(i%2===0) s+='<rect x="'+x0+'" y="'+m.t+'" width="'+(x1-x0)+'" height="'+ih+'" fill="var(--line2)" opacity=".7"/>';
+    s+='<text x="'+((x0+x1)/2)+'" y="'+(m.t+12)+'" text-anchor="middle">'+b.label+'</text>';
+  });
+  o.xticks.forEach(t=>{ const px=xi(t.i);
+    s+='<line x1="'+px+'" x2="'+px+'" y1="'+(H-m.b)+'" y2="'+(H-m.b+4)+'" stroke="var(--muted)"/>';
+    s+='<text class="mono" x="'+px+'" y="'+(H-m.b+17)+'" text-anchor="middle">'+t.label+'</text>'; });
+  s+='<text x="'+(m.l+iw/2)+'" y="'+(H-4)+'" text-anchor="middle">'+o.xTitle+'</text>';
+  s+='<text x="10" y="'+(m.t+ih/2)+'" text-anchor="middle" transform="rotate(-90 10 '+(m.t+ih/2)+')">'+o.yTitle+'</text>';
+  o.series.forEach(se=>{
+    let d=''; se.v.forEach((v,i)=>{ d+=(i?'L':'M')+xi(i).toFixed(1)+' '+y(v).toFixed(1); });
+    s+='<path d="'+d+'" fill="none" stroke="'+se.color+'" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>';
+  });
+  s+='<line id="xh" y1="'+m.t+'" y2="'+(H-m.b)+'" stroke="var(--muted)" stroke-dasharray="3 3" visibility="hidden"/>';
+  o.series.forEach((se,k)=>{ s+='<circle id="dot'+k+'" r="5" fill="'+se.color+'" stroke="var(--surface)" stroke-width="2" visibility="hidden"/>'; });
+  s+='<rect id="hit" x="'+m.l+'" y="'+m.t+'" width="'+iw+'" height="'+ih+'" fill="transparent"/></svg>';
+  el.innerHTML=s;
+  const svg=el.querySelector('svg'), tip=mkTip(el), xh=svg.querySelector('#xh'), hit=svg.querySelector('#hit');
+  const dots=o.series.map((_,k)=>svg.querySelector('#dot'+k));
+  function move(e){
+    const r=svg.getBoundingClientRect(), px=(e.clientX-r.left)*(W/r.width);
+    let best=0,bd=1e9; for(let i=0;i<n;i++){ const dd=Math.abs(xi(i)-px); if(dd<bd){bd=dd;best=i;} }
+    xh.setAttribute('x1',xi(best)); xh.setAttribute('x2',xi(best)); xh.setAttribute('visibility','visible');
+    dots.forEach((d,k)=>{ d.setAttribute('cx',xi(best)); d.setAttribute('cy',y(o.series[k].v[best])); d.setAttribute('visibility','visible'); });
+    tip.innerHTML='<b>'+o.tipHead(best)+'</b><br>'+o.series.map(se=>'<span style="color:'+se.tcolor+'">●</span> '+se.name+' '+f1(se.v[best])+'').join('<br>')+(o.tipExtra?'<br>'+o.tipExtra(best):'');
+    tip.hidden=false;
+    const px2=xi(best)*(r.width/W), tw=tip.offsetWidth;
+    tip.style.left=Math.min(Math.max(px2+12,0), r.width-tw)+'px'; tip.style.top='8px';
+  }
+  hit.addEventListener('pointermove',move); hit.addEventListener('pointerdown',move);
+  hit.addEventListener('pointerleave',()=>{ tip.hidden=true; xh.setAttribute('visibility','hidden'); dots.forEach(d=>d.setAttribute('visibility','hidden')); });
+}
+
+function drawTime(el){
+  const tl=Sim.timeline(cfg,0.1), P=tl.points;
+  const names={0:'전진',180:'후진',90:'좌',[-90]:'우'};
+  const idx=t=>Math.round(t/0.1);
+  const bands=[{i0:0,i1:idx(4),label:'이륙'}];
+  [[0],[180],[90],[-90]].forEach((d,i)=>bands.push({i0:idx(4+i*5),i1:Math.min(P.length-1,idx(9+i*5)),label:names[d[0]]}));
+  const all=P.flatMap(p=>[p.conv,p.dyson]);
+  const ymin=Math.floor(Math.min(...all)/5)*5-5, ymax=Math.ceil(Math.max(...all)/5)*5+3;
+  const xt=[]; for(let t=0;t<=tl.total;t+=4) xt.push({i:idx(t),label:String(t)});
+  drawLine(el,{xs:P.map(p=>p.t),ymin,ymax,xticks:xt,xTitle:'시간 (s)',yTitle:'dB(A)',topPad:8,h:270,bands,
+    aria:'시간에 따른 dB(A) 변화',
+    series:[{name:'일반',v:P.map(p=>p.conv),color:'var(--s1)',tcolor:'var(--s1)'},{name:'다이슨',v:P.map(p=>p.dyson),color:'var(--s2)',tcolor:'var(--s2)'}],
+    tipHead:i=>'t = '+P[i].t.toFixed(1)+' s',
+    tipExtra:i=>'기울기 '+P[i].tilt.toFixed(0)+'° · 스로틀 '+Math.round(P[i].frac*100)+'%<br>Δ '+sgn(P[i].dyson-P[i].conv)+' dB'});
+}
+
+function drawSpec(el, sc){
+  const r=sc.find(s=>s.move.id===selMove);
+  const a=r.conv.spectrum, b=r.dyson.spectrum, all=a.concat(b);
+  const ymin=Math.max(0,Math.floor((Math.max(...all)-50)/10)*10), ymax=Math.ceil((Math.max(...all)+3)/10)*10;
+  const xt=[63,125,250,500,1000,2000,4000,8000].map(f=>({i:BANDS.indexOf(f),label:f>=1000?(f/1000)+'k':String(f)}));
+  const hz=i=>BANDS[i]>=1000?(BANDS[i]/1000)+' kHz':BANDS[i]+' Hz';
+  drawLine(el,{xs:BANDS,xcat:true,ymin,ymax,xticks:xt,xTitle:'주파수 (Hz, 1/3 옥타브)',yTitle:'dB',h:250,
+    aria:'주파수 스펙트럼',
+    series:[{name:'일반',v:a,color:'var(--s1)',tcolor:'var(--s1)'},{name:'다이슨',v:b,color:'var(--s2)',tcolor:'var(--s2)'}],
+    tipHead:i=>hz(i), tipExtra:i=>'Δ '+sgn(b[i]-a[i])+' dB'});
+}
+
+function drawTable(sc){
+  const rr=r=>{ const v=r.rotors.map(x=>x.rpm); return Math.round(Math.min(...v)).toLocaleString('en-US')+'–'+Math.round(Math.max(...v)).toLocaleString('en-US'); };
+  let h='<thead><tr><th>움직임</th><th>일반 dB(A)</th><th>다이슨 dB(A)</th><th>차이</th><th>일반 rpm</th><th>다이슨 rpm</th><th>일반 전력</th><th>다이슨 전력</th></tr></thead><tbody>';
+  sc.forEach(s=>{ const d=s.dyson.dbA-s.conv.dbA;
+    h+='<tr><td>'+s.move.label+'</td><td class="n">'+f1(s.conv.dbA)+'</td><td class="n">'+f1(s.dyson.dbA)+'</td><td class="n '+(d<0?'neg':'')+'">'+sgn(d)+'</td><td class="n">'+rr(s.conv)+'</td><td class="n">'+rr(s.dyson)+'</td><td class="n">'+Math.round(s.conv.totalP)+' W</td><td class="n">'+Math.round(s.dyson.totalP)+' W</td></tr>'; });
+  document.getElementById('tbl').innerHTML=h+'</tbody>';
+}
+
+let lastSc=null;
+function everyday(v){ return v<45?'조용한 도서관':v<55?'조용한 사무실':v<62?'일반 대화':v<68?'큰 목소리 대화':v<76?'청소기':v<85?'붐비는 도로':'매우 시끄러운 소리'; }
+function draw(){
+  const sc=Sim.scenarios(cfg); lastSc=sc;
+  const mean=sc.reduce((a,s)=>a+(s.dyson.dbA-s.conv.dbA),0)/sc.length;
+  const big=document.getElementById('bigDelta'), am=Math.abs(mean).toFixed(1);
+  big.innerHTML=Math.abs(mean)<0.05?'소음 차이가 거의 없어요':'다이슨 날개가 평균 <em>'+am+' dB</em> 더 '+(mean<0?'조용해요':'시끄러워요');
+  const loud=Math.pow(2,mean/10), hv=sc[0];
+  document.getElementById('bigTxt').innerHTML='사람이 느끼는 소리 크기로는 약 '+Math.round(Math.abs(1-loud)*100)+'% '+(mean<0?'작아지는':'커지는')+' 정도예요. 호버링 기준으로 일반 날개는 '+f1(hv.conv.dbA)+' dB(A)로 <b>'+everyday(hv.conv.dbA)+'</b>, 다이슨 날개는 '+f1(hv.dyson.dbA)+' dB(A)로 <b>'+everyday(hv.dyson.dbA)+'</b> 수준이에요.';
+  drawDumb(document.getElementById('chDumb'),sc);
+  drawTime(document.getElementById('chTime'));
+  drawSpec(document.getElementById('chSpec'),sc);
+  drawTable(sc);
+}
+document.getElementById('copy').onclick=()=>{
+  if(!lastSc) return;
+  let t='움직임,일반 날개 dB(A),다이슨 날개 dB(A),차이 dB\n';
+  lastSc.forEach(s=>{ t+=s.move.label+','+f1(s.conv.dbA)+','+f1(s.dyson.dbA)+','+f1(s.dyson.dbA-s.conv.dbA)+'\n'; });
+  const ok=document.getElementById('copyok');
+  const done=m=>{ ok.textContent=m; setTimeout(()=>ok.textContent='',2500); };
+  if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(()=>done('복사했습니다'),()=>done('복사할 수 없습니다'));
+  else done('복사할 수 없습니다');
+};
+const mL=document.getElementById('mLight'), mD=document.getElementById('mDark');
+function setMode(m){ document.documentElement.setAttribute('data-theme',m); mL.setAttribute('aria-pressed',m==='light'); mD.setAttribute('aria-pressed',m==='dark'); }
+setMode(document.documentElement.getAttribute('data-theme')||(window.matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'));
+mL.onclick=()=>setMode('light'); mD.onclick=()=>setMode('dark');
+document.getElementById('pro').addEventListener('toggle',()=>setTimeout(draw,0));
+let rt=0; window.addEventListener('resize',()=>{ clearTimeout(rt); rt=setTimeout(draw,120); });
+draw();
+})();
+</script>
